@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>불협화음 (Discord DJ) - AI 차 안 음악 DJ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;600;700;800;900&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            purple: '#8B5CF6',
+                            cyan: '#06B6D4',
+                            pink: '#EC4899',
+                            red: '#EF4444',
+                            dark: '#0B0F19',
+                            card: '#131B2E',
+                            accent: '#F59E0B'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans KR', 'sans-serif'],
+                        tech: ['Orbitron', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #080C16;
+            color: #F8FAFC;
+            font-family: 'Noto Sans KR', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* LP Vinyl Spin */
+        .spin-lp {
+            animation: spin 3s linear infinite;
+        }
+        .spin-lp-fast {
+            animation: spin 0.35s linear infinite;
+        }
+        .paused-lp {
+            animation-play-state: paused;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Veto Red Flash Overlay */
+        #veto-overlay {
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        .flash-red-active {
+            animation: redFlash 0.6s ease-in-out 2;
+        }
+        @keyframes redFlash {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.75; background-color: #EF4444; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #080C16;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1E293B;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8B5CF6;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 sm:p-5 max-w-6xl mx-auto">
+
+    <!-- Red Veto Warning Overlay Screen -->
+    <div id="veto-overlay" class="fixed inset-0 z-50 opacity-0 bg-red-600 pointer-events-none"></div>
+
+    <!-- Notification Toast Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-xs pointer-events-none"></div>
+
+    <!-- App Header -->
+    <header class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3.5 sm:p-4 mb-4 shadow-xl flex flex-col sm:flex-row justify-between items-center gap-3">
+        <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 via-pink-600 to-cyan-400 flex items-center justify-center text-white text-2xl shadow-lg shadow-purple-500/20 shrink-0">
+                <i class="fa-solid fa-compact-disc spin-lp"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xl sm:text-2xl font-black tracking-tight font-tech text-white">
+                        불협화음 <span class="text-[10px] font-sans font-extrabold px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800/80">Discord DJ</span>
+                    </h1>
+                </div>
+                <p class="text-xs text-slate-400 mt-0.5">차 안의 선곡 싸움을 3초 만에 끝내는 AI DJ 🚗💨</p>
+            </div>
+        </div>
+
+        <!-- Drive Context Selector & Preset Button -->
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+            <div class="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2">
+                <i class="fa-solid fa-car text-cyan-400"></i>
+                <select id="select-drive-context" onchange="app.setDriveContext(this.value)" class="bg-transparent text-slate-200 focus:outline-none cursor-pointer font-medium text-xs">
+                    <option value="rainy">☔ 비 오는 감성 도로</option>
+                    <option value="traffic">🚗 꽉 막힌 고속도로</option>
+                    <option value="night">🌃 야간 해안 드라이브</option>
+                    <option value="commute">🌆 퇴근길 피로 회복</option>
+                </select>
+            </div>
+
+            <button onclick="app.loadSampleData()" class="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-purple-600/20 shrink-0">
+                <i class="fa-solid fa-bolt text-amber-300"></i> 1초 세팅 (예시 데이터)
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN 3-STEP INTUITIVE DASHBOARD -->
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 mb-4">
+
+        <!-- STEP 1: 탑승자 & 선곡 설정 (Left Column - 5 Cols) -->
+        <section class="lg:col-span-5 bg-slate-900/90 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-xl">
+            <div class="space-y-3">
+                <!-- Step 1 Header -->
+                <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <div>
+                        <span class="text-[10px] font-black uppercase tracking-wider text-purple-400 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800">STEP 1</span>
+                        <h2 class="text-base font-extrabold text-white mt-1 flex items-center gap-2">
+                            <i class="fa-solid fa-users text-cyan-400"></i> 차 안에 누구누구 탔나요?
+                        </h2>
+                    </div>
+                    <button onclick="app.openAddPassengerModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs px-3 py-1.5 rounded-xl transition flex items-center gap-1 shadow">
+                        <i class="fa-solid fa-user-plus text-purple-400"></i> 추가
+                    </button>
+                </div>
+
+                <!-- Friction Bar Indicator -->
+                <div class="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-bolt-lightning text-amber-400"></i>
+                        <span class="text-slate-300 font-medium">취향 불협화음 지수</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-20 bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                            <div id="discord-score-bar" class="h-full bg-gradient-to-r from-cyan-400 via-purple-500 to-red-500 w-0 transition-all duration-500"></div>
+                        </div>
+                        <span id="discord-score-text" class="font-extrabold text-purple-400 font-tech">0%</span>
+                    </div>
+                </div>
+
+                <!-- Passenger Cards Dynamic Container -->
+                <div id="passengers-grid" class="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- Clear All Data Link -->
+            <div class="pt-3 border-t border-slate-800/80 flex justify-between items-center text-[11px] text-slate-500">
+                <span>* 각 탑승자별로 좋아하는 노래를 등록할 수 있습니다.</span>
+                <button onclick="app.clearAllData()" class="hover:text-red-400 underline transition">전체 삭제</button>
+            </div>
+        </section>
+
+        <!-- RIGHT COLUMN: STEP 2 (DJ Mode Picker) + STEP 3 (Now Playing Player) (7 Cols) -->
+        <section class="lg:col-span-7 space-y-4 flex flex-col justify-between">
+            
+            <!-- STEP 2: DJ 모드 선택 버튼 3개 -->
+            <div class="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-4 shadow-xl space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                    <div>
+                        <span class="text-[10px] font-black uppercase tracking-wider text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">STEP 2</span>
+                        <h2 class="text-base font-extrabold text-white mt-1">
+                            🎵 AI DJ 선곡 버튼 선택하기
+                        </h2>
+                    </div>
+                    <span class="text-[11px] text-slate-400">클릭 즉시 선곡 진행</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <!-- Mode 1: Gacha Roulette -->
+                    <button onclick="app.spinRoulette()" class="bg-gradient-to-br from-purple-700 via-indigo-800 to-slate-900 hover:from-purple-600 hover:to-indigo-700 text-white p-3.5 rounded-2xl border border-purple-500/40 flex flex-col items-center text-center shadow-lg transition active:scale-95 group">
+                        <i class="fa-solid fa-dice text-2xl mb-1 text-purple-300 group-hover:rotate-45 transition duration-300"></i>
+                        <span class="text-xs font-black">① 랜덤 갓차</span>
+                        <span class="text-[10px] text-purple-200/80 mt-0.5">공평한 룰렛 픽</span>
+                    </button>
+
+                    <!-- Mode 2: Harmony Mix -->
+                    <button onclick="app.runHarmonyMode('midpoint')" class="bg-gradient-to-br from-cyan-950 via-slate-900 to-slate-950 hover:from-cyan-900 hover:to-slate-800 text-white p-3.5 rounded-2xl border border-cyan-500/40 flex flex-col items-center text-center shadow transition active:scale-95 group">
+                        <i class="fa-solid fa-sliders text-2xl mb-1 text-cyan-400 group-hover:scale-110 transition"></i>
+                        <span class="text-xs font-black">② 취향 믹스</span>
+                        <span class="text-[10px] text-cyan-300/80 mt-0.5">화음 타협선곡</span>
+                    </button>
+
+                    <!-- Mode 3: Veto Skip -->
+                    <button onclick="app.triggerVeto()" class="bg-gradient-to-br from-red-950 via-slate-900 to-slate-950 hover:from-red-900 hover:to-slate-800 text-red-200 p-3.5 rounded-2xl border border-red-500/40 flex flex-col items-center text-center shadow transition active:scale-95 group">
+                        <i class="fa-solid fa-hand text-2xl mb-1 text-red-400 group-hover:bounce transition"></i>
+                        <span class="text-xs font-black">③ 불협화음 스킵</span>
+                        <span class="text-[10px] text-red-300/80 mt-0.5" id="veto-threshold-text">반대표 행사</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 3: 지금 재생 중 (LP & Audio Synthesizer Controls) -->
+            <div class="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[240px]">
+                <!-- Audio Visualizer Background Canvas -->
+                <canvas id="audio-visualizer" class="absolute inset-0 w-full h-full opacity-20 pointer-events-none"></canvas>
+
+                <!-- Step 3 Header Badge -->
+                <div class="flex items-center justify-between relative z-10 mb-3">
+                    <span class="text-[10px] font-black uppercase tracking-wider text-pink-400 bg-pink-950/80 px-2 py-0.5 rounded border border-pink-800">STEP 3</span>
+                    <span id="playing-status-badge" class="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-800/60">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 라이브 재생 중
+                    </span>
+                </div>
+
+                <!-- Track Info Box -->
+                <div class="flex items-center gap-4 relative z-10">
+                    <div id="lp-disc" class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-950 border-4 border-slate-800 flex items-center justify-center shadow-2xl relative shrink-0 spin-lp paused-lp">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 via-pink-500 to-cyan-400 flex items-center justify-center text-white font-bold text-xs">
+                            <i class="fa-solid fa-music"></i>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 space-y-1 min-w-0">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <span id="track-submitter-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-950 text-purple-300 border border-purple-800 truncate">
+                                신청자: -
+                            </span>
+                            <span id="track-genre-badge" class="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                                장르: -
+                            </span>
+                        </div>
+                        <h3 id="track-title-display" class="text-base sm:text-lg font-black text-white truncate">
+                            상단 ①, ② 모드 버튼을 눌러보세요!
+                        </h3>
+                        <p id="track-artist-display" class="text-xs text-slate-400 truncate">
+                            AI가 동행인들의 곡 중 최고 조합을 찾아 재생합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Progress Bar & Player Controls -->
+                <div class="mt-4 space-y-2 relative z-10">
+                    <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800 cursor-pointer" onclick="app.seekTrack(event)">
+                        <div id="track-progress-bar" class="bg-gradient-to-r from-purple-500 via-pink-500 to-cyan-400 h-full w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <div class="flex items-center justify-between text-xs">
+                        <span id="vibe-text" class="text-[11px] text-slate-400 truncate max-w-[220px]">
+                            사운드 준비 완료
+                        </span>
+                        
+                        <div class="flex items-center gap-3">
+                            <button onclick="app.prevTrack()" class="text-slate-400 hover:text-white p-1">
+                                <i class="fa-solid fa-backward-step"></i>
+                            </button>
+                            <button id="btn-play-toggle" onclick="app.togglePlay()" class="w-9 h-9 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center text-xs shadow-lg shadow-purple-600/40 transition">
+                                <i class="fa-solid fa-play" id="play-toggle-icon"></i>
+                            </button>
+                            <button onclick="app.nextTrack()" class="text-slate-400 hover:text-white p-1">
+                                <i class="fa-solid fa-forward-step"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI DJ Commentary Speech Bubble Log -->
+            <div class="bg-slate-950/90 border border-slate-800/90 rounded-2xl p-3.5 flex items-start gap-3 shadow-inner">
+                <div class="w-9 h-9 rounded-xl bg-purple-600/20 text-purple-400 flex items-center justify-center text-lg shrink-0 mt-0.5">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-bold text-purple-300">AI DJ 한마디</span>
+                        <span class="text-[10px] text-slate-500 font-tech" id="comment-timestamp">방금 전</span>
+                    </div>
+                    <p id="ai-commentary-text" class="text-xs text-slate-200 font-medium leading-relaxed">
+                        "안녕하세요! '불협화음' AI DJ입니다. 탑승자를 등록하거나 예시 데이터를 불러온 후 상단의 모드 버튼을 눌러보세요!"
+                    </p>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- MODAL 1: Add Passenger -->
+    <div id="modal-passenger" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xs p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-user-plus text-purple-400"></i> 탑승자 등록
+                </h3>
+                <button onclick="app.closePassengerModal()" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">이름 / 호칭</label>
+                    <input type="text" id="input-passenger-name" placeholder="예: 운전자, 친구A, 동생" class="w-full bg-slate-950 border border-slate-700 text-xs text-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-purple-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">상징 테마 색상</label>
+                    <div class="flex gap-2 justify-between">
+                        <button type="button" onclick="app.selectModalColor('#8B5CF6')" class="color-picker-btn w-8 h-8 rounded-full bg-purple-500 ring-2 ring-white ring-offset-2 ring-offset-slate-900" data-color="#8B5CF6"></button>
+                        <button type="button" onclick="app.selectModalColor('#06B6D4')" class="color-picker-btn w-8 h-8 rounded-full bg-cyan-500" data-color="#06B6D4"></button>
+                        <button type="button" onclick="app.selectModalColor('#EC4899')" class="color-picker-btn w-8 h-8 rounded-full bg-pink-500" data-color="#EC4899"></button>
+                        <button type="button" onclick="app.selectModalColor('#F59E0B')" class="color-picker-btn w-8 h-8 rounded-full bg-amber-500" data-color="#F59E0B"></button>
+                        <button type="button" onclick="app.selectModalColor('#10B981')" class="color-picker-btn w-8 h-8 rounded-full bg-emerald-500" data-color="#10B981"></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button onclick="app.closePassengerModal()" class="px-3.5 py-1.5 rounded-xl bg-slate-800 text-xs font-medium text-slate-300 hover:bg-slate-700">취소</button>
+                <button onclick="app.saveNewPassenger()" class="px-3.5 py-1.5 rounded-xl bg-purple-600 text-xs font-bold text-white hover:bg-purple-500 shadow">등록</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Add Song with Preset Picker -->
+    <div id="modal-song" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2.5">
+                <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+                    <i class="fa-solid fa-music text-cyan-400"></i> <span id="modal-song-passenger-name" class="text-purple-400">동행인</span>의 신청곡 추가
+                </h3>
+                <button onclick="app.closeSongModal()" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Quick Preset Chips -->
+            <div class="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-cyan-400">⚡ 1-클릭 인기곡 즉시 선택</span>
+                    <select id="preset-genre-filter" onchange="app.renderPresetSongs(this.value)" class="bg-slate-900 text-slate-300 text-[10px] rounded px-2 py-0.5 border border-slate-700">
+                        <option value="전체">전체 장르</option>
+                        <option value="K-Pop">K-Pop</option>
+                        <option value="발라드">발라드</option>
+                        <option value="록/메탈">록/메탈</option>
+                        <option value="트로트">트로트</option>
+                        <option value="힙합">힙합</option>
+                    </select>
+                </div>
+                <div id="preset-songs-list" class="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                    <!-- Preset chips -->
+                </div>
+            </div>
+
+            <!-- Manual Input Form -->
+            <div class="space-y-2.5">
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">곡 제목</label>
+                    <input type="text" id="input-song-title" placeholder="위 상단 곡을 누르거나 직접 입력" class="w-full bg-slate-950 border border-slate-700 text-xs text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-cyan-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">아티스트 / 가수</label>
+                    <input type="text" id="input-song-artist" placeholder="예: NewJeans" class="w-full bg-slate-950 border border-slate-700 text-xs text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-cyan-500">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">장르</label>
+                        <select id="select-song-genre" class="w-full bg-slate-950 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-2 focus:outline-none">
+                            <option value="K-Pop">K-Pop</option>
+                            <option value="발라드">발라드</option>
+                            <option value="록/메탈">록 / 메탈</option>
+                            <option value="트로트">트로트</option>
+                            <option value="힙합">힙합</option>
+                            <option value="팝">팝</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">템포/BPM</label>
+                        <select id="select-song-bpm" class="w-full bg-slate-950 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-2 focus:outline-none">
+                            <option value="128">신남 / 빠름 (128 BPM)</option>
+                            <option value="90">보통 / 미디엄 (90 BPM)</option>
+                            <option value="65">잔잔함 / 느림 (65 BPM)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button onclick="app.closeSongModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 text-xs font-medium text-slate-300 hover:bg-slate-700">취소</button>
+                <button onclick="app.saveNewSong()" class="px-3.5 py-1.5 rounded-xl bg-cyan-600 text-xs font-bold text-white hover:bg-cyan-500 shadow">곡 저장</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * =========================================================================
+         * [불협화음 (Discord DJ) - Controller & Web Audio Engine]
+         * =========================================================================
+         */
+
+        class DiscordDJApp {
+            constructor() {
+                this.passengers = [];
+                this.activePassengerForSong = null;
+                this.selectedModalColor = '#8B5CF6';
+
+                // Popular Preset Song Database
+                this.presetSongs = [
+                    { title: 'Supernova', artist: 'aespa', genre: 'K-Pop', bpm: 130 },
+                    { title: 'APT.', artist: '로제 & Bruno Mars', genre: 'K-Pop', bpm: 145 },
+                    { title: 'Hype Boy', artist: 'NewJeans', genre: 'K-Pop', bpm: 128 },
+                    { title: '한 페이지가 될 수 있게', artist: 'DAY6', genre: 'K-Pop', bpm: 136 },
+                    { title: '이제 나만 믿어요', artist: '임영웅', genre: '트로트', bpm: 68 },
+                    { title: '막걸리 한잔', artist: '영탁', genre: '트로트', bpm: 120 },
+                    { title: '초혼', artist: '장윤정', genre: '트로트', bpm: 82 },
+                    { title: '너를 보내고', artist: '윤도현', genre: '록/메탈', bpm: 72 },
+                    { title: '나는 나비', artist: 'YB', genre: '록/메탈', bpm: 125 },
+                    { title: 'Master of Puppets', artist: 'Metallica', genre: '록/메탈', bpm: 140 },
+                    { title: '야생화', artist: '박효신', genre: '발라드', bpm: 65 },
+                    { title: '희재', artist: '성시경', genre: '발라드', bpm: 68 },
+                    { title: 'SPOT!', artist: '지코 (feat. JENNIE)', genre: '힙합', bpm: 105 },
+                    { title: 'Shape of You', artist: 'Ed Sheeran', genre: '팝', bpm: 96 },
+                    { title: 'Stay', artist: 'The Kid LAROI & Justin Bieber', genre: '팝', bpm: 120 }
+                ];
+
+                this.currentMode = 'roulette';
+                this.driveContext = 'rainy';
+
+                this.currentTrack = null;
+                this.isPlaying = false;
+                this.playProgress = 0;
+                this.progressTimer = null;
+                this.lastPlayedPassengerId = null;
+                this.discordScore = 0;
+
+                this.audioCtx = null;
+                this.synthTimer = null;
+
+                this.peaceBGMs = {
+                    rainy: [
+                        { title: '비 오는 감성 빗소리 Lo-Fi', artist: 'AI DJ Peace', genre: 'Lo-Fi', bpm: 70, bgm: true },
+                        { title: '창밖 빗방울 드라이브 R&B', artist: 'AI DJ Peace', genre: 'Chill R&B', bpm: 82, bgm: true }
+                    ],
+                    traffic: [
+                        { title: '꽉 막힌 도로 마음 치유 클래식', artist: 'AI DJ Peace', genre: 'Classic', bpm: 60, bgm: true },
+                        { title: '화 줄여주는 릴렉싱 재즈 피아노', artist: 'AI DJ Peace', genre: 'Smooth Jazz', bpm: 75, bgm: true }
+                    ],
+                    night: [
+                        { title: '심야 해안도로 시티팝 BGM', artist: 'AI DJ Peace', genre: 'CityPop', bpm: 105, bgm: true },
+                        { title: '몽환적인 신스웨이브 드라이브', artist: 'AI DJ Peace', genre: 'Synthwave', bpm: 110, bgm: true }
+                    ],
+                    commute: [
+                        { title: '퇴근길 수고한 당신을 위한 Acoustic', artist: 'AI DJ Peace', genre: 'Acoustic', bpm: 80, bgm: true },
+                        { title: '오늘 하루 토닥토닥 힐링 BGM', artist: 'AI DJ Peace', genre: 'Ambient', bpm: 65, bgm: true }
+                    ]
+                };
+
+                this.wittyComments = {
+                    roulette: [
+                        "공평한 갓차 룰렛! 연속 선곡 방지 알고리즘으로 차 안의 독재를 막았습니다.",
+                        "이번 선곡에 불만이 있으신 분은 다음 휴게소에서 음료수를 쏘십시오!",
+                        "민주주의 룰렛 당첨! 다들 귀를 잠시 양보해 주세요."
+                    ],
+                    veto: [
+                        "🚨 [불협화음 과다 발생] 과반수 반대표 행사로 곡이 강제 스킵되었습니다!",
+                        "스킵! 해당 곡을 신청하신 분은 즉시 반성의 시간을 가지세요.",
+                        "귀 고통 방지권 행사 성공! 차 안의 평화 지수가 일시 상승했습니다."
+                    ],
+                    midpoint: [
+                        "🎼 [화음 타협] 모두의 평균 BPM과 중간 장르로 도출된 중립 타협곡입니다.",
+                        "누구도 억울하지 않은 AI의 수학적 타협 선곡입니다.",
+                        "평화로운 평균 지점의 곡으로 차 안의 평화를 유지합니다."
+                    ],
+                    peace: [
+                        "🏳️ [AI 평화협정 발동] 반대표 남발 및 극심한 취향 마찰로 AI가 비상 BGM을 강제 재생합니다.",
+                        "현재 드라이브 상황(날씨/도로)에 최적화된 힐링 BGM입니다.",
+                        "더 이상의 불협화음은 불허합니다. 편안한 BGM 타임을 가지세요."
+                    ]
+                };
+            }
+
+            init() {
+                this.renderPassengers();
+                this.updateDiscordIndex();
+                this.initVisualizerCanvas();
+            }
+
+            showToast(msg, type = 'info') {
+                const container = document.getElementById('toast-container');
+                if (!container) return;
+                const toast = document.createElement('div');
+                toast.className = `px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-xl transition-all transform duration-300 translate-y-2 opacity-0 flex items-center gap-2 ${type === 'error' ? 'bg-red-600' : 'bg-purple-600'}`;
+                toast.innerHTML = `<i class="fa-solid ${type === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-info'}"></i> ${msg}`;
+                container.appendChild(toast);
+                setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
+                setTimeout(() => {
+                    toast.classList.add('opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }, 2500);
+            }
+
+            renderPassengers() {
+                const grid = document.getElementById('passengers-grid');
+                grid.innerHTML = '';
+
+                if (this.passengers.length === 0) {
+                    grid.innerHTML = `
+                        <div class="bg-slate-950/60 border border-dashed border-slate-800 rounded-2xl p-6 text-center space-y-2">
+                            <i class="fa-solid fa-users-slash text-slate-600 text-2xl"></i>
+                            <p class="text-xs text-slate-400">탑승자가 없습니다.<br>우상단 <span class="text-cyan-400 font-bold">'1초 세팅'</span> 버튼을 눌러보세요!</p>
+                        </div>
+                    `;
+                    this.updateDiscordIndex();
+                    return;
+                }
+
+                this.passengers.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-950 border border-slate-800/90 rounded-2xl p-3 space-y-2 shadow relative";
+                    
+                    let songsListHtml = p.songs.map((s, idx) => `
+                        <div class="flex items-center justify-between text-xs bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-800/80 text-slate-300">
+                            <div class="truncate mr-1">
+                                <span class="font-bold text-white">${s.title}</span>
+                                <span class="text-slate-400 text-[10px] ml-1">- ${s.artist}</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-950 text-cyan-400 border border-slate-800 font-tech">${s.genre}</span>
+                                <button onclick="app.deleteSong(${p.id}, ${idx})" class="text-slate-500 hover:text-red-400 ml-1 p-0.5">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full shrink-0" style="background-color: ${p.color}"></span>
+                                <h3 class="text-xs font-bold text-white">${p.name}</h3>
+                            </div>
+                            <button onclick="app.removePassenger(${p.id})" class="text-slate-500 hover:text-red-400 text-xs p-1">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+
+                        <div class="space-y-1">
+                            ${songsListHtml || '<div class="text-[11px] text-slate-600 italic py-1 text-center">신청곡 없음</div>'}
+                        </div>
+
+                        <button onclick="app.openAddSongModal(${p.id})" class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-plus text-[10px]"></i> 곡 추가
+                        </button>
+                    `;
+
+                    grid.appendChild(card);
+                });
+
+                this.updateDiscordIndex();
+                this.updateVetoThresholdText();
+            }
+
+            loadSampleData() {
+                this.passengers = [
+                    {
+                        id: 1,
+                        name: '운전자 (아빠)',
+                        color: '#8B5CF6',
+                        vetosLeft: 2,
+                        songs: [
+                            { title: '너를 보내고', artist: '윤도현', genre: '록/메탈', bpm: 72 },
+                            { title: '막걸리 한잔', artist: '영탁', genre: '트로트', bpm: 120 }
+                        ]
+                    },
+                    {
+                        id: 2,
+                        name: '동행1 (엄마)',
+                        color: '#EC4899',
+                        vetosLeft: 2,
+                        songs: [
+                            { title: '이제 나만 믿어요', artist: '임영웅', genre: '트로트', bpm: 68 },
+                            { title: '초혼', artist: '장윤정', genre: '트로트', bpm: 82 }
+                        ]
+                    },
+                    {
+                        id: 3,
+                        name: '동행2 (나)',
+                        color: '#06B6D4',
+                        vetosLeft: 2,
+                        songs: [
+                            { title: 'Supernova', artist: 'aespa', genre: 'K-Pop', bpm: 130 },
+                            { title: 'Master of Puppets', artist: 'Metallica', genre: '록/메탈', bpm: 140 }
+                        ]
+                    }
+                ];
+                this.renderPassengers();
+                this.updateAICommentary("⚡ 샘플 데이터가 가공되었습니다! ① 번 '랜덤 갓차' 버튼을 누르면 선곡이 시작됩니다.");
+                this.showToast("샘플 데이터 3명이 탑승했습니다.");
+            }
+
+            clearAllData() {
+                this.passengers = [];
+                this.renderPassengers();
+                this.updateAICommentary("탑승자 정보가 초기화되었습니다. 상단 버튼으로 새로 탑승자를 추가해 주세요.");
+                this.showToast("데이터 초기화 완료");
+            }
+
+            openAddPassengerModal() {
+                document.getElementById('input-passenger-name').value = '';
+                document.getElementById('modal-passenger').classList.remove('hidden');
+            }
+
+            closePassengerModal() {
+                document.getElementById('modal-passenger').classList.add('hidden');
+            }
+
+            selectModalColor(color) {
+                this.selectedModalColor = color;
+                document.querySelectorAll('.color-picker-btn').forEach(btn => {
+                    if (btn.getAttribute('data-color') === color) {
+                        btn.className = "color-picker-btn w-8 h-8 rounded-full ring-2 ring-white ring-offset-2 ring-offset-slate-900";
+                    } else {
+                        btn.className = "color-picker-btn w-8 h-8 rounded-full opacity-70 hover:opacity-100";
+                    }
+                });
+            }
+
+            saveNewPassenger() {
+                const nameInput = document.getElementById('input-passenger-name').value.trim();
+                if (!nameInput) {
+                    this.showToast("탑승자 이름을 입력해주세요.", "error");
+                    return;
+                }
+
+                const newPassenger = {
+                    id: Date.now(),
+                    name: nameInput,
+                    color: this.selectedModalColor,
+                    vetosLeft: 2,
+                    songs: []
+                };
+
+                this.passengers.push(newPassenger);
+                this.renderPassengers();
+                this.closePassengerModal();
+                this.showToast(`'${nameInput}'님이 탑승하였습니다.`);
+            }
+
+            removePassenger(id) {
+                this.passengers = this.passengers.filter(p => p.id != id);
+                this.renderPassengers();
+            }
+
+            openAddSongModal(passengerId) {
+                const p = this.passengers.find(item => item.id == passengerId);
+                if (!p) return;
+                this.activePassengerForSong = p;
+                document.getElementById('modal-song-passenger-name').textContent = p.name;
+                document.getElementById('input-song-title').value = '';
+                document.getElementById('input-song-artist').value = '';
+                
+                const filterEl = document.getElementById('preset-genre-filter');
+                if (filterEl) filterEl.value = '전체';
+                this.renderPresetSongs('전체');
+
+                document.getElementById('modal-song').classList.remove('hidden');
+            }
+
+            renderPresetSongs(selectedGenre = '전체') {
+                const container = document.getElementById('preset-songs-list');
+                if (!container) return;
+
+                const filtered = selectedGenre === '전체' 
+                    ? this.presetSongs 
+                    : this.presetSongs.filter(s => s.genre === selectedGenre);
+
+                container.innerHTML = filtered.map((song) => {
+                    const songIndex = this.presetSongs.findIndex(s => s.title === song.title && s.artist === song.artist);
+                    return `
+                        <button type="button" onclick="app.selectPresetSong(${songIndex})" class="flex items-center justify-between text-left bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/60 p-2 rounded-xl transition group">
+                            <div class="truncate mr-1">
+                                <div class="text-xs font-bold text-slate-200 group-hover:text-cyan-400 truncate">${song.title}</div>
+                                <div class="text-[10px] text-slate-400 truncate">${song.artist}</div>
+                            </div>
+                            <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800 shrink-0 font-medium">${song.genre}</span>
+                        </button>
+                    `;
+                }).join('');
+            }
+
+            selectPresetSong(index) {
+                const song = this.presetSongs[index];
+                if (!song) return;
+
+                document.getElementById('input-song-title').value = song.title;
+                document.getElementById('input-song-artist').value = song.artist;
+                document.getElementById('select-song-genre').value = song.genre;
+                
+                const bpmSelect = document.getElementById('select-song-bpm');
+                if (song.bpm >= 115) bpmSelect.value = "128";
+                else if (song.bpm >= 80) bpmSelect.value = "90";
+                else bpmSelect.value = "65";
+            }
+
+            closeSongModal() {
+                document.getElementById('modal-song').classList.add('hidden');
+                this.activePassengerForSong = null;
+            }
+
+            saveNewSong() {
+                if (!this.activePassengerForSong) {
+                    this.closeSongModal();
+                    return;
+                }
+                const title = document.getElementById('input-song-title').value.trim();
+                const artist = document.getElementById('input-song-artist').value.trim() || 'Unknown';
+                const genre = document.getElementById('select-song-genre').value;
+                const bpm = parseInt(document.getElementById('select-song-bpm').value);
+
+                if (!title) {
+                    this.showToast("곡 제목을 입력해 주세요.", "error");
+                    return;
+                }
+
+                this.activePassengerForSong.songs.push({ title, artist, genre, bpm });
+                this.renderPassengers();
+                this.closeSongModal();
+                this.showToast(`신청곡 '${title}' 등록 완료!`);
+            }
+
+            deleteSong(passengerId, songIndex) {
+                const p = this.passengers.find(item => item.id == passengerId);
+                if (p) {
+                    p.songs.splice(songIndex, 1);
+                    this.renderPassengers();
+                }
+            }
+
+            spinRoulette() {
+                this.currentMode = 'roulette';
+                const pool = [];
+                this.passengers.forEach(p => {
+                    if (p.id !== this.lastPlayedPassengerId || this.passengers.length === 1) {
+                        p.songs.forEach(s => {
+                            pool.push({ ...s, submitter: p.name, submitterId: p.id, color: p.color });
+                        });
+                    }
+                });
+
+                if (pool.length === 0) {
+                    this.showToast("신청곡이 없습니다. 먼저 곡을 추가해 주세요!", "error");
+                    return;
+                }
+
+                this.playChimeSynth(880, 0.1);
+                const lp = document.getElementById('lp-disc');
+                lp.classList.remove('paused-lp');
+                lp.classList.add('spin-lp-fast');
+
+                this.updateAICommentary("🎲 룰렛을 격렬하게 돌리는 중입니다...");
+
+                setTimeout(() => {
+                    lp.classList.remove('spin-lp-fast');
+                    const selected = pool[Math.floor(Math.random() * pool.length)];
+                    this.lastPlayedPassengerId = selected.submitterId;
+                    this.playTrack(selected);
+
+                    const comment = this.wittyComments.roulette[Math.floor(Math.random() * this.wittyComments.roulette.length)];
+                    this.updateAICommentary(`🎯 당첨! '${selected.submitter}'님의 곡 [${selected.title}] - ${comment}`);
+                }, 800);
+            }
+
+            runHarmonyMode(submode) {
+                this.currentMode = 'harmony';
+                const allSongs = [];
+                this.passengers.forEach(p => {
+                    p.songs.forEach(s => {
+                        allSongs.push({ ...s, submitter: p.name, submitterId: p.id, color: p.color });
+                    });
+                });
+
+                if (allSongs.length === 0) {
+                    this.showToast("취향 믹스를 위한 신청곡이 없습니다.", "error");
+                    return;
+                }
+
+                const avgBpm = allSongs.reduce((acc, s) => acc + s.bpm, 0) / allSongs.length;
+                let closestTrack = allSongs[0];
+                let minDiff = Math.abs(allSongs[0].bpm - avgBpm);
+
+                allSongs.forEach(s => {
+                    const diff = Math.abs(s.bpm - avgBpm);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestTrack = s;
+                    }
+                });
+
+                this.playTrack(closestTrack);
+                const comment = this.wittyComments.midpoint[Math.floor(Math.random() * this.wittyComments.midpoint.length)];
+                this.updateAICommentary(`🎼 [화음 타협] 평균 템포(${Math.round(avgBpm)} BPM) 타협곡 [${closestTrack.title}] - ${comment}`);
+            }
+
+            triggerVeto() {
+                if (!this.currentTrack) {
+                    this.showToast("재생 중인 곡이 없습니다.", "error");
+                    return;
+                }
+
+                const activePassengers = this.passengers.filter(p => p.vetosLeft > 0);
+                if (activePassengers.length === 0) {
+                    this.updateAICommentary("🚨 모든 동행인의 반대표 쿠폰이 소진되어 AI 평화협정이 준비 중입니다.");
+                    this.triggerPeaceMode();
+                    return;
+                }
+
+                const voter = activePassengers[Math.floor(Math.random() * activePassengers.length)];
+                voter.vetosLeft -= 1;
+                this.renderPassengers();
+
+                const overlay = document.getElementById('veto-overlay');
+                overlay.classList.add('flash-red-active');
+                this.playNoiseSynth();
+                setTimeout(() => overlay.classList.remove('flash-red-active'), 1000);
+
+                this.discordScore = Math.min(100, this.discordScore + 15);
+                this.updateDiscordIndexBar();
+
+                const comment = this.wittyComments.veto[Math.floor(Math.random() * this.wittyComments.veto.length)];
+                this.updateAICommentary(`🛑 '${voter.name}'님의 반대표 행사! - ${comment}`);
+
+                if (this.discordScore >= 85) {
+                    setTimeout(() => this.triggerPeaceMode(), 1200);
+                } else {
+                    setTimeout(() => this.spinRoulette(), 800);
+                }
+            }
+
+            triggerPeaceMode() {
+                this.currentMode = 'peace';
+                const bgmList = this.peaceBGMs[this.driveContext] || this.peaceBGMs.rainy;
+                const selectedBgm = bgmList[Math.floor(Math.random() * bgmList.length)];
+
+                const peaceTrack = {
+                    title: selectedBgm.title,
+                    artist: selectedBgm.artist,
+                    genre: selectedBgm.genre,
+                    bpm: selectedBgm.bpm,
+                    submitter: 'AI DJ (평화협정)',
+                    color: '#10B981',
+                    bgm: true
+                };
+
+                this.playTrack(peaceTrack);
+                this.discordScore = Math.max(15, this.discordScore - 25);
+                this.updateDiscordIndexBar();
+
+                const comment = this.wittyComments.peace[Math.floor(Math.random() * this.wittyComments.peace.length)];
+                this.updateAICommentary(`🏳️ [AI 평화협정] ${comment}`);
+            }
+
+            setDriveContext(contextKey) {
+                this.driveContext = contextKey;
+                this.showToast(`드라이브 상황 변경 완료`);
+                if (this.currentMode === 'peace') {
+                    this.triggerPeaceMode();
+                }
+            }
+
+            updateVetoThresholdText() {
+                const count = this.passengers.length;
+                const threshold = count > 0 ? Math.floor(count / 2) + 1 : 1;
+                document.getElementById('veto-threshold-text').textContent = `과반수(${threshold}명) 반대표`;
+            }
+
+            initAudioEngine() {
+                if (!this.audioCtx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.audioCtx = new AudioContext();
+                }
+                if (this.audioCtx.state === 'suspended') {
+                    this.audioCtx.resume();
+                }
+            }
+
+            playSynthesizedBeat(track) {
+                this.initAudioEngine();
+                if (!this.audioCtx) return;
+
+                clearInterval(this.synthTimer);
+                const bpm = track.bpm || 100;
+                const intervalMs = (60 / bpm) * 1000 / 2;
+
+                let step = 0;
+                this.synthTimer = setInterval(() => {
+                    if (!this.isPlaying) return;
+
+                    const now = this.audioCtx.currentTime;
+                    const osc = this.audioCtx.createOscillator();
+                    const gain = this.audioCtx.createGain();
+
+                    osc.connect(gain);
+                    gain.connect(this.audioCtx.destination);
+
+                    if (track.bgm) {
+                        const notes = [261.63, 293.66, 329.63, 392.00, 440.00];
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(notes[step % notes.length], now);
+                        gain.gain.setValueAtTime(0.04, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                        osc.start(now);
+                        osc.stop(now + 0.4);
+                    } else {
+                        if (step % 4 === 0) {
+                            osc.type = 'triangle';
+                            osc.frequency.setValueAtTime(150, now);
+                            osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.15);
+                            gain.gain.setValueAtTime(0.18, now);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                        } else {
+                            const scale = [330, 392, 440, 523.25, 587.33, 659.25];
+                            osc.type = 'sawtooth';
+                            osc.frequency.setValueAtTime(scale[(step * 2) % scale.length], now);
+                            gain.gain.setValueAtTime(0.025, now);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                        }
+                        osc.start(now);
+                        osc.stop(now + 0.2);
+                    }
+
+                    step++;
+                }, intervalMs);
+            }
+
+            playChimeSynth(freq = 600, duration = 0.15) {
+                this.initAudioEngine();
+                if (!this.audioCtx) return;
+                const now = this.audioCtx.currentTime;
+                const osc = this.audioCtx.createOscillator();
+                const gain = this.audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                osc.connect(gain);
+                gain.connect(this.audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + duration);
+            }
+
+            playNoiseSynth() {
+                this.initAudioEngine();
+                if (!this.audioCtx) return;
+                const now = this.audioCtx.currentTime;
+                const bufferSize = this.audioCtx.sampleRate * 0.2;
+                const buffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+                const whiteNoise = this.audioCtx.createBufferSource();
+                whiteNoise.buffer = buffer;
+                const gain = this.audioCtx.createGain();
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                whiteNoise.connect(gain);
+                gain.connect(this.audioCtx.destination);
+                whiteNoise.start(now);
+            }
+
+            initVisualizerCanvas() {
+                const canvas = document.getElementById('audio-visualizer');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+
+                const resize = () => {
+                    canvas.width = canvas.parentElement.clientWidth;
+                    canvas.height = canvas.parentElement.clientHeight;
+                };
+                resize();
+                window.addEventListener('resize', resize);
+
+                let bars = 28;
+                const draw = () => {
+                    requestAnimationFrame(draw);
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    const barWidth = canvas.width / bars;
+                    for (let i = 0; i < bars; i++) {
+                        let barHeight = this.isPlaying ? Math.random() * (canvas.height * 0.55) + 8 : 3;
+                        ctx.fillStyle = `rgba(139, 92, 246, ${this.isPlaying ? 0.3 : 0.08})`;
+                        ctx.fillRect(i * barWidth, canvas.height - barHeight, barWidth - 2, barHeight);
+                    }
+                };
+                draw();
+            }
+
+            playTrack(track) {
+                this.currentTrack = track;
+                this.isPlaying = true;
+                this.playProgress = 0;
+
+                document.getElementById('track-title-display').textContent = track.title;
+                document.getElementById('track-artist-display').textContent = track.artist;
+                
+                const submitterBadge = document.getElementById('track-submitter-badge');
+                submitterBadge.innerHTML = `<i class="fa-solid fa-user text-[10px] mr-1"></i> 신청자: ${track.submitter}`;
+                submitterBadge.style.backgroundColor = track.color ? `${track.color}33` : '#3b0764';
+                submitterBadge.style.color = track.color || '#d8b4fe';
+
+                document.getElementById('track-genre-badge').textContent = `장르: ${track.genre || '기타'}`;
+                document.getElementById('vibe-text').textContent = `${track.genre} (${track.bpm} BPM) Synthesizer 가동 중`;
+
+                const lp = document.getElementById('lp-disc');
+                lp.classList.remove('paused-lp');
+                document.getElementById('play-toggle-icon').className = 'fa-solid fa-pause';
+
+                this.playSynthesizedBeat(track);
+
+                clearInterval(this.progressTimer);
+                this.progressTimer = setInterval(() => {
+                    if (this.isPlaying) {
+                        this.playProgress += 1;
+                        if (this.playProgress > 100) {
+                            this.playProgress = 0;
+                            this.spinRoulette();
+                        }
+                        this.updateProgressUI();
+                    }
+                }, 350);
+            }
+
+            togglePlay() {
+                if (!this.currentTrack) {
+                    this.spinRoulette();
+                    return;
+                }
+
+                this.isPlaying = !this.isPlaying;
+                const lp = document.getElementById('lp-disc');
+                const icon = document.getElementById('play-toggle-icon');
+
+                if (this.isPlaying) {
+                    lp.classList.remove('paused-lp');
+                    icon.className = 'fa-solid fa-pause';
+                    this.playSynthesizedBeat(this.currentTrack);
+                } else {
+                    lp.classList.add('paused-lp');
+                    icon.className = 'fa-solid fa-play';
+                    clearInterval(this.synthTimer);
+                }
+            }
+
+            nextTrack() {
+                this.spinRoulette();
+            }
+
+            prevTrack() {
+                this.playProgress = 0;
+                this.updateProgressUI();
+            }
+
+            seekTrack(e) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                this.playProgress = Math.round((clickX / rect.width) * 100);
+                this.updateProgressUI();
+            }
+
+            updateProgressUI() {
+                document.getElementById('track-progress-bar').style.width = `${this.playProgress}%`;
+            }
+
+            updateDiscordIndex() {
+                const genres = new Set();
+                let songCount = 0;
+
+                this.passengers.forEach(p => {
+                    p.songs.forEach(s => {
+                        genres.add(s.genre);
+                        songCount++;
+                    });
+                });
+
+                if (songCount === 0) {
+                    this.discordScore = 0;
+                } else {
+                    this.discordScore = Math.min(95, 25 + (genres.size * 18));
+                }
+                this.updateDiscordIndexBar();
+            }
+
+            updateDiscordIndexBar() {
+                document.getElementById('discord-score-text').textContent = `${this.discordScore}%`;
+                document.getElementById('discord-score-bar').style.width = `${this.discordScore}%`;
+            }
+
+            updateAICommentary(text) {
+                const commentEl = document.getElementById('ai-commentary-text');
+                if (commentEl) commentEl.textContent = `"${text}"`;
+                const timeEl = document.getElementById('comment-timestamp');
+                if (timeEl) {
+                    const time = new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
+                    timeEl.textContent = time;
+                }
+            }
+        }
+
+        let app;
+        window.onload = function() {
+            app = new DiscordDJApp();
+            app.init();
+        };
+    </script>
+</body>
+</html>
